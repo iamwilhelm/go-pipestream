@@ -6,46 +6,33 @@ import "os"
 import "log"
 import "sync"
 
-func data_source(wg *sync.WaitGroup, upstream chan string, downstreams chan string) {
-  defer wg.Done()
-  wg.Add(1)
+func data_source(_ string, downstream chan string) {
   filepath := "datasource/pride_prejudice_urls.txt"
-  downstreams <- filepath
-  close(downstreams)
+  downstream <- filepath
 }
 
-func load_text(wg *sync.WaitGroup, upstream chan string, downstreams chan string) {
-  defer wg.Done()
-  wg.Add(1)
-  for filepath := range upstream {
-    fmt.Printf("reading: %s\n", filepath)
+func load_text(filepath string, downstream chan string) {
+  fmt.Printf("reading: %s\n", filepath)
 
-    f, err := os.Open(filepath)
-    defer f.Close()
-    if err != nil {
-      log.Fatal(err)
-    }
-
-    scanner := bufio.NewScanner(f)
-
-    for scanner.Scan() {
-      url := scanner.Text()
-      fmt.Printf("  line: %s\n", url)
-
-      downstreams <- url
-    }
-
-    close(downstreams)
+  f, err := os.Open(filepath)
+  defer f.Close()
+  if err != nil {
+    log.Fatal(err)
   }
+
+  scanner := bufio.NewScanner(f)
+
+  for scanner.Scan() {
+    url := scanner.Text()
+    fmt.Printf("  line: %s\n", url)
+
+    downstream <- url
+  }
+
 }
 
-func fetch_page(wg *sync.WaitGroup, upstream chan string, downstreams chan string) {
-  defer wg.Done()
-  wg.Add(1)
-  for url := range upstream {
-    downstreams <- url
-  }
-  close(downstreams)
+func fetch_page(url string, downstream chan string) {
+  downstream <- url
 }
 
 func soup_parse() {
@@ -59,36 +46,37 @@ func word_count() {
 func word_count_merge() {
 }
 
-// func connect(wg *sync.WaitGroup, stageFunc func(string) string) {
-//   defer wg.Done()
-//   wg.Add(1)
+func connect(wg *sync.WaitGroup, stageFunc func(string, chan string), upstream chan string) chan string {
+  downstream := make(chan string)
 
-//   upstream = make(chan string)
+  go func() {
+    defer wg.Done()
+    wg.Add(1)
 
-//   for elem := range upstream {
+    if upstream == nil {
+      stageFunc("", downstream)
+    } else {
+      for str_elem := range upstream {
+        stageFunc(str_elem, downstream)
+      }
+    }
+    close(downstream)
+  }()
 
-//   }
-
-// }
+  return downstream
+}
 
 func main() {
   fmt.Printf("Build pipeline.\n")
 
   wg := new(sync.WaitGroup)
-  ch_1_2 := make(chan string)
-  ch_2_3 := make(chan string)
-  ch_3_4 := make(chan string)
 
-  // downstreams = []chan int{ch_1_2}
-  go data_source(wg, nil, ch_1_2)
-
-  // downstreams = []chan int{ch_2_3}
-  go load_text(wg, ch_1_2, ch_2_3)
-
-  // downstreams = []chan int
-  go fetch_page(wg, ch_2_3, ch_3_4)
+  ch_1_2 := connect(wg, data_source, nil)
+  ch_2_3 := connect(wg, load_text, ch_1_2)
+  ch_3_4 := connect(wg, fetch_page, ch_2_3)
 
   fmt.Printf("Running pipeline\n")
+
   for result := range ch_3_4 {
     fmt.Printf("  channel: %s\n", result)
   }
