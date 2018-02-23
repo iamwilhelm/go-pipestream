@@ -4,7 +4,7 @@ import "fmt"
 import "bufio"
 import "os"
 import "log"
-import "sync"
+//import "sync"
 import "strings"
 import "net/http"
 import "encoding/json"
@@ -104,13 +104,10 @@ func word_count(paragraph string, downstream chan string) {
 func word_count_merge() {
 }
 
-func connect(wg *sync.WaitGroup, stageFunc func(string, chan string), upstream chan string) chan string {
+func connect(stageFunc func(string, chan string), upstream chan string) chan string {
   downstream := make(chan string)
 
   go func() {
-    // defer wg.Done()
-    // wg.Add(1)
-
     if upstream == nil {
       stageFunc("", downstream)
     } else {
@@ -127,20 +124,16 @@ func connect(wg *sync.WaitGroup, stageFunc func(string, chan string), upstream c
 func main() {
   fmt.Printf("Build pipeline.\n")
 
-  wg := new(sync.WaitGroup)
-
-  ch_1_2 := connect(wg, data_source, nil)
-  ch_2_3 := connect(wg, load_text, ch_1_2)
-  ch_3_4 := connect(wg, fetch_page, ch_2_3)
-  ch_4_5 := connect(wg, page_parse, ch_3_4)
-  ch_5_6 := connect(wg, word_count, ch_4_5)
+  ch_1_2 := connect(data_source, nil)
+  ch_2_3 := connect(load_text, ch_1_2)
+  ch_3_4 := connect(fetch_page, ch_2_3)
+  ch_4_5 := connect(page_parse, ch_3_4)
+  ch_5_6 := connect(word_count, ch_4_5)
 
   fmt.Printf("Running pipeline\n")
 
   for result := range ch_5_6 {
     fmt.Printf("  result: %s\n", result)
   }
-
-  //wg.Wait()
 }
 
