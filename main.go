@@ -7,6 +7,7 @@ import "log"
 
 //import "sync"
 import "strings"
+import "time"
 import "net/http"
 import "encoding/json"
 import "io/ioutil"
@@ -39,11 +40,15 @@ func load_text(filepath string, downstream chan string) {
 }
 
 func fetch_page(url string, downstream chan string) {
-	resp, err := http.Get(url)
-	defer resp.Body.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
+  var netClient = &http.Client{
+    Timeout: time.Second * 10,
+  }
+
+  resp, err := netClient.Get(url)
+  defer resp.Body.Close()
+  if err != nil {
+    log.Fatal(err)
+  }
 
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
