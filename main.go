@@ -80,6 +80,8 @@ func page_parse(page string, downstream chan string) {
 	for _, p_node := range p_nodes {
 		paragraph := scrape.Text(p_node)
 		fmt.Printf("  parse: parsed page\n")
+
+    // TODO find a way to yield results, so we don't have to pass in downstream
 		downstream <- paragraph
 	}
 }
@@ -114,12 +116,8 @@ func flatMap(stageFunc func(string, chan string), upstream chan string) chan str
 	downstream := make(chan string)
 
 	go func() {
-		if upstream == nil {
-			stageFunc("", downstream)
-		} else {
-			for str_elem := range upstream {
-				stageFunc(str_elem, downstream)
-			}
+		for str_elem := range upstream {
+			stageFunc(str_elem, downstream)
 		}
 		close(downstream)
 	}()
@@ -137,7 +135,7 @@ func reduce(stageFunc func(string, chan string),
 func main() {
 	fmt.Printf("Build pipeline.\n")
 
-	ch_1_2 := flatMap(data_source, nil)
+	ch_1_2 := source(data_source)
 	ch_2_3 := flatMap(load_text, ch_1_2)
 	ch_3_4 := flatMap(fetch_page, ch_2_3)
 	ch_4_5 := flatMap(page_parse, ch_3_4)
