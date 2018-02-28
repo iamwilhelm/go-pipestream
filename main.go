@@ -109,7 +109,37 @@ func word_count(paragraph string, downstream chan string) {
 	downstream <- string(jsonString)
 }
 
-func word_count_merge(total_counts string, counts string) {
+func word_count_reduce(total_counts string, counts string) string {
+  //word_counts := make(map[string]int)
+
+  // unmarshal json
+
+  // merge total with counts
+
+  jsonString := ""
+  // jsonString, err := json.Marshal(total_counts)
+  // if err != nil {
+  //   log.Fatal(err)
+  // }
+
+  // it should be the responsibility of reduce to figure out whether or not to 
+  // emit the resulting accumulator. We should be able to yield results instead.
+  return string(jsonString)
+}
+
+func word_count_reduce_trigger(num_elems int) bool {
+  return (num_elems == 5)
+}
+
+func source(stageFunc func(string, chan string)) chan string {
+  downstream := make(chan string)
+
+  go func() {
+    stageFunc("", downstream)
+    close(downstream)
+  }()
+
+  return downstream
 }
 
 func flatMap(stageFunc func(string, chan string), upstream chan string) chan string {
@@ -125,11 +155,37 @@ func flatMap(stageFunc func(string, chan string), upstream chan string) chan str
 	return downstream
 }
 
-func reduce(stageFunc func(string, chan string),
-	mergeFunc func(string, chan string),
+func reduce(stageFunc func(string, string) string,
+  triggerFunc func(int) bool,
 	initial string,
 	upstream chan string) chan string {
-	fmt.Printf("reduction")
+
+  downstream := make(chan string)
+
+  // iterator
+  go func() {
+    // initialize for trigger/window
+    accumulator := initial
+    elem_count := 0
+
+    for str_elem := range upstream {
+      // accumulate and reduce 
+      accumulator = stageFunc(accumulator, str_elem)
+      if triggerFunc(elem_count) {
+        // send all results downstream
+        downstream <- accumulator
+        // reset for trigger/window
+        accumulator = initial
+        elem_count = 0
+      }
+    }
+
+    // send the remaining accumulated counts for last window
+    downstream <- accumulator
+    close(downstream)
+  }()
+
+  return downstream
 }
 
 func main() {
@@ -140,6 +196,7 @@ func main() {
 	ch_3_4 := flatMap(fetch_page, ch_2_3)
 	ch_4_5 := flatMap(page_parse, ch_3_4)
 	ch_5_6 := flatMap(word_count, ch_4_5)
+  // ch_6_7 := reduce(word_count_reduce, word_count_reduce_trigger, "{}", ch_5_6)
 
 	fmt.Printf("Running pipeline\n")
 
