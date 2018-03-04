@@ -101,30 +101,42 @@ func word_count(paragraph string, downstream chan string) {
 		}
 	}
 
-	jsonString, err := json.Marshal(word_counts)
+  fmt.Printf("  counted words for paragraph...\n")
+
+	jsonBytes, err := json.Marshal(word_counts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	downstream <- string(jsonString)
+	downstream <- string(jsonBytes)
 }
 
-func word_count_reduce(total_counts string, counts string) string {
-  //word_counts := make(map[string]int)
+func word_count_reduce(total_counts_str string, counts_str string) string {
+  total_counts := make(map[string]int)
+  counts := make(map[string]int)
 
   // unmarshal json
+  json.Unmarshal([]byte(total_counts_str), &total_counts)
+  json.Unmarshal([]byte(counts_str), &counts)
 
   // merge total with counts
+  for key, curr_count := range counts {
+    prev_count, exists := total_counts[key]
+    if exists == true {
+      total_counts[key] = prev_count + curr_count 
+    } else {
+      total_counts[key] = curr_count
+    }
+  }
 
-  jsonString := ""
-  // jsonString, err := json.Marshal(total_counts)
-  // if err != nil {
-  //   log.Fatal(err)
-  // }
+  jsonBytes, err := json.Marshal(total_counts)
+  if err != nil {
+    log.Fatal(err)
+  }
 
   // it should be the responsibility of reduce to figure out whether or not to 
   // emit the resulting accumulator. We should be able to yield results instead.
-  return string(jsonString)
+  return string(jsonBytes)
 }
 
 func word_count_reduce_trigger(num_elems int) bool {
@@ -155,6 +167,15 @@ func flatMap(stageFunc func(string, chan string), upstream chan string) chan str
 	return downstream
 }
 
+// It's an odd asymmetry design that stageFunc in reduce doesn't get a 
+// downstream chan because when it gets flushed downstream is mediated 
+// by reduce. Whereas in flatMap, we wanted to let people have control over
+// what is streamed. 
+//
+// In order to implement with same symmetry, you need two gofuncs, one that
+// executes stageFunc, and another that accumulates. When triggerFunc is true,
+// it needs to communicate back to stageFunc that it needs to reset its 
+// total count.
 func reduce(stageFunc func(string, string) string,
   triggerFunc func(int) bool,
 	initial string,
@@ -171,6 +192,8 @@ func reduce(stageFunc func(string, string) string,
     for str_elem := range upstream {
       // accumulate and reduce 
       accumulator = stageFunc(accumulator, str_elem)
+      elem_count += 1
+      
       if triggerFunc(elem_count) {
         // send all results downstream
         downstream <- accumulator
@@ -196,11 +219,12 @@ func main() {
 	ch_3_4 := flatMap(fetch_page, ch_2_3)
 	ch_4_5 := flatMap(page_parse, ch_3_4)
 	ch_5_6 := flatMap(word_count, ch_4_5)
-  // ch_6_7 := reduce(word_count_reduce, word_count_reduce_trigger, "{}", ch_5_6)
+  ch_6_7 := reduce(word_count_reduce, word_count_reduce_trigger, "{}", ch_5_6)
 
 	fmt.Printf("Running pipeline\n")
 
-	for result := range ch_5_6 {
-		fmt.Printf("  result: %s\n", result)
+	for result := range ch_6_7 {
+		fmt.Printf("  result: %v\n", result)
+    fmt.Printf("-----------------------------\n")
 	}
 }
